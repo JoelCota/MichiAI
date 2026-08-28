@@ -1,0 +1,262 @@
+# ============================================================================
+#  Michi — configuration
+#  Everything you normally want to change lives in this file.
+#  API keys do NOT belong here: use ${VAR} and put the value in .env
+# ============================================================================
+
+assistant:
+  name: Michi
+  language: es                # en | es  (affects STT hint + default voice)
+  # Michi's personality. Keep it short — it is prepended to every request.
+  persona: |
+    You are Michi, a voice assistant running on Joel's Windows PC.
+    Always answer in Spanish, in natural Mexican Spanish, even if the user
+    speaks English or another language. Keep answers short and conversational —
+    usually one or two sentences. No markdown, no bullet lists, no emoji,
+    no code blocks unless explicitly asked to spell something out.
+    You have tools to control the computer. Use them when asked to do
+    something rather than explaining how to do it.
+    If you don't know, say so briefly.
+  max_history_turns: 12       # how many user+assistant pairs to remember
+  history_summary: true       # when old turns are trimmed, compress them into
+                              # a one-line rolling summary instead of losing them
+  followup_seconds: 8         # keep listening this long after replying,
+                              # so you don't need the wake word every time
+  streaming: true             # speak the first sentence while the rest is still
+                              # being generated — the biggest latency win there is
+
+
+# ============================================================================
+#  LLM — the brain.  Change `active` to switch providers. That's it.
+# ============================================================================
+llm:
+  active: go
+
+  # If `active` fails (outage, rate limit), try these providers in order.
+  # `thinking: disabled` skips the model's hidden reasoning — without it, the
+  # first spoken word is delayed by several seconds.
+  fallback: [go_hy3]
+
+  providers:
+
+    # ---- OpenCode Go (your $10/mo subscription — open models) -------------
+    go:
+      type: openai_compat
+      api_key: ${OPENCODE_API_KEY}
+      base_url: https://opencode.ai/zen/go/v1
+      model: deepseek-v4-flash
+      max_tokens: 1024
+      temperature: 0.7
+      extra_body:
+        thinking: {type: disabled}   # no hidden reasoning = fast first word
+
+    # ---- Go backup: hy3 also accepts thinking: disabled --------------------
+    go_hy3:
+      type: openai_compat
+      api_key: ${OPENCODE_API_KEY}
+      base_url: https://opencode.ai/zen/go/v1
+      model: hy3
+      max_tokens: 1024
+      temperature: 0.7
+      extra_body:
+        thinking: {type: disabled}
+
+    # ---- Anthropic / Claude API ------------------------------------------
+    claude:
+      type: anthropic
+      api_key: ${ANTHROPIC_API_KEY}
+      model: claude-sonnet-5      # claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5
+      max_tokens: 1024
+      temperature: 0.7
+
+    # ---- OpenCode Zen (OpenAI-compatible gateway) -------------------------
+    opencode:
+      type: openai_compat
+      api_key: ${OPENCODE_API_KEY}
+      base_url: https://opencode.ai/zen/v1
+      model: kimi-k3
+      max_tokens: 1024
+      temperature: 0.7
+
+    # ---- Claude models through your Zen key (Anthropic-style endpoint) ----
+    opencode_claude:
+      type: anthropic
+      api_key: ${OPENCODE_API_KEY}
+      base_url: https://opencode.ai/zen
+      model: claude-sonnet-5
+      max_tokens: 1024
+      temperature: 0.7
+
+    # ---- OpenAI -----------------------------------------------------------
+    openai:
+      type: openai_compat
+      api_key: ${OPENAI_API_KEY}
+      base_url: https://api.openai.com/v1
+      model: gpt-5.1
+      max_tokens: 1024
+      temperature: 0.7
+
+    # ---- Groq (fast + cheap, good for a snappy voice assistant) -----------
+    groq:
+      type: openai_compat
+      api_key: ${GROQ_API_KEY}
+      base_url: https://api.groq.com/openai/v1
+      model: llama-3.3-70b-versatile
+      max_tokens: 1024
+      temperature: 0.7
+
+    # ---- Anything local: Ollama / LM Studio / llama.cpp --------------------
+    local:
+      type: openai_compat
+      api_key: not-needed
+      base_url: http://localhost:11434/v1
+      model: qwen3:8b
+      max_tokens: 1024
+      temperature: 0.7
+
+
+# ============================================================================
+#  WAKE WORD — how Michi knows you're talking to her
+# ============================================================================
+wake:
+  # stt_phrase  : works immediately, actually hears "Hey Michi"  (default)
+  # hybrid      : openwakeword gate + Whisper verify — lowest idle CPU,
+  #               still hears "Hey Michi" (gate word works too, e.g. "hey jarvis")
+  # openwakeword: lowest CPU, needs a trained hey_michi.onnx (or use hey_jarvis)
+  # hotkey      : push-to-talk only, no listening
+  engine: stt_phrase
+
+  stt_phrase:
+    phrases: ["hola michi", "oye michi"]   # Spanish-only wake phrases
+    fuzzy_threshold: 0.75     # 0-1, lower = easier to trigger, more false wakes
+    chunk_seconds: 1.2        # length of audio scanned at a time (lower = faster wake)
+
+  openwakeword:
+    # A pretrained name (alexa | hey_jarvis | hey_mycroft | hey_rhasspy)
+    # or a path to your own trained model, e.g. models/hey_michi.onnx
+    model: hey_jarvis
+    threshold: 0.5
+
+  hotkey:
+    combo: ctrl+alt+m
+
+  # Push-to-talk always works as a backup, whatever engine is active.
+  always_allow_hotkey: true
+  hotkey_combo: ctrl+alt+m
+
+
+# ============================================================================
+#  SPEECH TO TEXT — turning your voice into words
+# ============================================================================
+stt:
+  engine: faster_whisper      # faster_whisper | openai_api
+
+  faster_whisper:
+    # Local model folders — downloaded already, so no HuggingFace access needed.
+    # "small" (multilingual) understands Spanish + English; "small.en" is
+    # English-only. You can also use model names like small / tiny.
+    model: models/faster-whisper/small
+    device: cuda              # auto | cpu | cuda  (needs nvidia-cublas-cu12 installed)
+    compute_type: auto        # auto | int8 | float16
+    wake_model: models/faster-whisper/tiny  # model used by the stt_phrase wake engine
+
+  openai_api:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+    model: whisper-1
+
+
+# ============================================================================
+#  VOICE — how Michi talks back
+# ============================================================================
+tts:
+  engine: edge                # sapi | edge | piper | openai_api
+  min_chunk_chars: 12         # merge shorter fragments so speech isn't choppy
+
+  sapi:                       # built into Windows, zero install, robotic
+    voice: ""                 # substring of a voice name, "" = system default
+    rate: 190
+
+  edge:                       # free neural voices, needs internet
+    voice: es-MX-DaliaNeural  # Mexican Spanish; en-US-AriaNeural for English
+    rate: "+0%"
+
+  piper:                      # offline neural, download a .onnx voice first
+    model_path: models/voices/en_US-amy-medium.onnx
+    exe_path: piper/piper.exe
+
+  openai_api:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini-tts
+    voice: alloy
+
+
+# ============================================================================
+#  AUDIO devices
+# ============================================================================
+audio:
+  input_device: null          # null = system default; or index/name substring
+  output_device: null
+  sample_rate: 16000
+  silence_threshold: 0.012    # RMS below this counts as silence
+  silence_duration: 0.9       # seconds of silence that ends your sentence
+  max_utterance_seconds: 20
+
+  # Interrupt Michi by talking over her. Off by default: without headphones the
+  # mic hears her own voice and she cuts herself off. Try it, then decide.
+  barge_in: false
+
+  chime:                      # short tone so you know she started listening
+    enabled: true
+    volume: 0.25
+
+
+# ============================================================================
+#  INTERFACE
+# ============================================================================
+ui:
+  tray: true                  # system tray icon with pause/quit (needs pystray)
+
+
+# ============================================================================
+#  TOOLS — what Michi is allowed to do to your computer
+# ============================================================================
+tools:
+  enabled:
+    - basics                  # time, date, timers, remember/recall a note
+    - system                  # volume, media keys, lock, screenshot
+    - apps                    # launch programs, focus/close windows
+    - web                     # open URLs, search in the browser
+    - clipboard               # read/write clipboard, type text
+    # - shell                 # arbitrary commands — off on purpose
+
+  confirm_before:             # Michi asks out loud before doing these
+    - shell_run
+    - close_window
+    - lock_screen
+
+  max_result_chars: 2000      # tool output beyond this is truncated before the
+                              # model sees it (protects the token budget)
+
+  rate_limits: {}             # optional per-tool caps, e.g.
+                              #   shell_run: {per_minute: 3}
+
+  # Friendly name -> what to actually launch. Michi matches loosely.
+  app_aliases:
+    browser: chrome
+    chrome: chrome
+    edge: msedge
+    code: code
+    vscode: code
+    spotify: spotify
+    notepad: notepad
+    calculator: calc
+    explorer: explorer
+    terminal: wt
+
+
+logging:
+  level: INFO                 # DEBUG for troubleshooting
+  file: logs/michi.log
+  print_transcripts: true
